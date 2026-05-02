@@ -195,7 +195,7 @@ def compute_save_path_display(save_dir: str, topic: str, suffix: str, emit: str)
     try:
         home = _Path.home().resolve()
         relative = raw.relative_to(home)
-        return f"~/{relative}"
+        return f"~/{relative.as_posix()}"
     except ValueError:
         return str(raw)
 
