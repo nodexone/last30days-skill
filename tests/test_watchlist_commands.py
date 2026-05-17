@@ -251,7 +251,38 @@ def test_run_topic_success(mock_subprocess, temp_db):
             "source_weights": {},
         },
         "clusters": [],
-        "ranked_candidates": [],
+        "ranked_candidates": [
+            {
+                "candidate_id": "c-r1",
+                "item_id": "R1",
+                "source": "reddit",
+                "title": "Test",
+                "url": "https://reddit.com/1",
+                "snippet": "Snippet",
+                "subquery_labels": ["primary"],
+                "native_ranks": {"reddit": 1},
+                "local_relevance": 0.8,
+                "freshness": 100,
+                "engagement": 50.0,
+                "source_quality": 0.8,
+                "rrf_score": 1.0,
+                "final_score": 0.8,
+                "explanation": "Snippet",
+                "source_items": [
+                    {
+                        "item_id": "R1",
+                        "source": "reddit",
+                        "title": "Test",
+                        "body": "Content",
+                        "url": "https://reddit.com/1",
+                        "author": "user",
+                        "engagement_score": 50.0,
+                        "local_relevance": 0.8,
+                        "snippet": "Snippet",
+                    }
+                ],
+            }
+        ],
         "items_by_source": {
             "reddit": [
                 {
@@ -338,7 +369,38 @@ def test_run_topic_calls_delivery(mock_deliver, mock_subprocess, temp_db):
             "source_weights": {},
         },
         "clusters": [],
-        "ranked_candidates": [],
+        "ranked_candidates": [
+            {
+                "candidate_id": "c-r1",
+                "item_id": "R1",
+                "source": "reddit",
+                "title": "Test",
+                "url": "https://reddit.com/1",
+                "snippet": "Snippet",
+                "subquery_labels": ["primary"],
+                "native_ranks": {"reddit": 1},
+                "local_relevance": 0.8,
+                "freshness": 100,
+                "engagement": 50.0,
+                "source_quality": 0.8,
+                "rrf_score": 1.0,
+                "final_score": 0.8,
+                "explanation": "Snippet",
+                "source_items": [
+                    {
+                        "item_id": "R1",
+                        "source": "reddit",
+                        "title": "Test",
+                        "body": "Content",
+                        "url": "https://reddit.com/1",
+                        "author": "user",
+                        "engagement_score": 50.0,
+                        "local_relevance": 0.8,
+                        "snippet": "Snippet",
+                    }
+                ],
+            }
+        ],
         "items_by_source": {
             "reddit": [
                 {

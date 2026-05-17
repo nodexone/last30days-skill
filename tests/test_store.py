@@ -59,7 +59,68 @@ def sample_report():
             "source_weights": {},
         },
         "clusters": [],
-        "ranked_candidates": [],
+        "ranked_candidates": [
+            {
+                "candidate_id": "c-r1",
+                "item_id": "R1",
+                "source": "reddit",
+                "title": "Test Reddit Post",
+                "url": "https://reddit.com/r/test/1",
+                "snippet": "Reddit snippet",
+                "subquery_labels": ["primary"],
+                "native_ranks": {"reddit": 1},
+                "local_relevance": 0.8,
+                "freshness": 100,
+                "engagement": 50.0,
+                "source_quality": 0.8,
+                "rrf_score": 1.0,
+                "final_score": 0.8,
+                "explanation": "Reddit snippet",
+                "source_items": [
+                    {
+                        "item_id": "R1",
+                        "source": "reddit",
+                        "title": "Test Reddit Post",
+                        "body": "Reddit discussion content",
+                        "url": "https://reddit.com/r/test/1",
+                        "author": "testuser",
+                        "engagement_score": 50.0,
+                        "local_relevance": 0.8,
+                        "snippet": "Reddit snippet",
+                    }
+                ],
+            },
+            {
+                "candidate_id": "c-x1",
+                "item_id": "X1",
+                "source": "x",
+                "title": "Test X Post",
+                "url": "https://x.com/test/status/1",
+                "snippet": "X snippet",
+                "subquery_labels": ["primary"],
+                "native_ranks": {"x": 1},
+                "local_relevance": 0.85,
+                "freshness": 100,
+                "engagement": 75.0,
+                "source_quality": 0.8,
+                "rrf_score": 1.0,
+                "final_score": 0.85,
+                "explanation": "X snippet",
+                "source_items": [
+                    {
+                        "item_id": "X1",
+                        "source": "x",
+                        "title": "Test X Post",
+                        "body": "X post content",
+                        "url": "https://x.com/test/status/1",
+                        "author": "xuser",
+                        "engagement_score": 75.0,
+                        "local_relevance": 0.85,
+                        "snippet": "X snippet",
+                    }
+                ],
+            },
+        ],
         "items_by_source": {
             "reddit": [
                 {
@@ -236,13 +297,13 @@ def test_findings_from_report_handles_missing_fields():
         "clusters": [],
         "ranked_candidates": [],
         "items_by_source": {
-            "reddit": [
+            "hackernews": [
                 {
                     "item_id": "R1",
-                    "source": "reddit",
+                    "source": "hackernews",
                     "title": "Test",
                     "body": "Content",
-                    "url": "https://reddit.com/1",
+                    "url": "https://news.ycombinator.com/item?id=1",
                     "author": None,  # Missing author
                     "engagement_score": None,  # Missing engagement
                     "local_relevance": None,  # Missing relevance
@@ -382,6 +443,127 @@ def test_store_findings_skips_items_without_url(temp_db):
     
     # Only the one with URL should be stored
     assert counts["new"] == 1
+
+
+def test_init_db_creates_finding_sightings_table(temp_db):
+    """Test that the per-run sightings ledger is available on fresh databases."""
+    conn = sqlite3.connect(str(temp_db))
+    table = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='finding_sightings'"
+    ).fetchone()
+    columns = {
+        row[1]: row[3]
+        for row in conn.execute("PRAGMA table_info(finding_sightings)").fetchall()
+    }
+    conn.close()
+
+    assert table is not None
+    assert columns["finding_id"] == 1
+
+
+def test_store_findings_records_sightings_for_new_findings(temp_db):
+    """Test that each stored finding is linked to the run that observed it."""
+    topic = store.add_topic("Test Topic")
+    run_id = store.record_run(topic["id"], source_mode="v3")
+    findings = [
+        {
+            "source": "reddit",
+            "source_url": "https://reddit.com/1",
+            "source_title": "Reddit 1",
+            "content": "Content 1",
+            "engagement_score": 10.0,
+            "relevance_score": 0.7,
+        },
+        {
+            "source": "x",
+            "source_url": "https://x.com/a/status/1",
+            "source_title": "X 1",
+            "content": "Content 2",
+            "engagement_score": 20.0,
+            "relevance_score": 0.8,
+        },
+    ]
+
+    store.store_findings(run_id, topic["id"], findings)
+
+    sightings = store.get_sightings_for_run(topic["id"], run_id)
+    assert [s["source_url"] for s in sightings] == [
+        "https://reddit.com/1",
+        "https://x.com/a/status/1",
+    ]
+    assert {s["source"] for s in sightings} == {"reddit", "x"}
+
+
+def test_store_findings_records_sightings_for_resighted_findings(temp_db):
+    """Test that a re-seen finding is recorded for each run that observes it."""
+    topic = store.add_topic("Test Topic")
+    first_run_id = store.record_run(topic["id"], source_mode="v3")
+    second_run_id = store.record_run(topic["id"], source_mode="v3")
+    finding = {
+        "source": "reddit",
+        "source_url": "https://reddit.com/1",
+        "source_title": "Reddit 1",
+        "content": "Content",
+        "engagement_score": 10.0,
+        "relevance_score": 0.7,
+    }
+
+    store.store_findings(first_run_id, topic["id"], [finding])
+    store.store_findings(second_run_id, topic["id"], [{**finding, "engagement_score": 15.0}])
+
+    first_sightings = store.get_sightings_for_run(topic["id"], first_run_id)
+    second_sightings = store.get_sightings_for_run(topic["id"], second_run_id)
+
+    assert len(first_sightings) == 1
+    assert len(second_sightings) == 1
+    assert first_sightings[0]["source_url"] == second_sightings[0]["source_url"]
+    assert second_sightings[0]["engagement_score"] == 15.0
+
+
+def test_store_findings_sightings_are_idempotent_per_run(temp_db):
+    """Test that storing the same finding twice for one run does not duplicate sightings."""
+    topic = store.add_topic("Test Topic")
+    run_id = store.record_run(topic["id"], source_mode="v3")
+    finding = {
+        "source": "reddit",
+        "source_url": "https://reddit.com/1",
+        "source_title": "Reddit 1",
+        "content": "Content",
+        "engagement_score": 10.0,
+        "relevance_score": 0.7,
+    }
+
+    store.store_findings(run_id, topic["id"], [finding])
+    store.store_findings(run_id, topic["id"], [finding])
+
+    sightings = store.get_sightings_for_run(topic["id"], run_id)
+    assert len(sightings) == 1
+
+
+def test_store_findings_updates_existing_sighting_for_same_run(temp_db):
+    """Test that retrying a run refreshes its sighting snapshot instead of freezing it."""
+    topic = store.add_topic("Test Topic")
+    run_id = store.record_run(topic["id"], source_mode="v3")
+    finding = {
+        "source": "reddit",
+        "source_url": "https://reddit.com/1",
+        "source_title": "Reddit 1",
+        "content": "Content",
+        "engagement_score": 10.0,
+        "relevance_score": 0.7,
+    }
+
+    store.store_findings(run_id, topic["id"], [finding])
+    store.store_findings(
+        run_id,
+        topic["id"],
+        [{**finding, "source_title": "Reddit 1 updated", "engagement_score": 15.0}],
+    )
+
+    sightings = store.get_sightings_for_run(topic["id"], run_id)
+    assert len(sightings) == 1
+    assert sightings[0]["source_title"] == "Reddit 1 updated"
+    assert sightings[0]["engagement_score"] == 15.0
 
 
 def test_update_validates_allowed_columns(temp_db, sample_report):
