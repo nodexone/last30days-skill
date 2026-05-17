@@ -193,6 +193,37 @@ class TestErrorPaths:
         assert result["auth_token"] == "test_auth_abc123"
         assert result["ct0"] == "test_ct0_xyz789"
 
+    def test_falls_back_to_legacy_safari_cookie_path(self, tmp_path: Path):
+        # Sandboxed path is intentionally NOT created — only the legacy path exists.
+        legacy_dir = tmp_path / "Library" / "Cookies"
+        legacy_dir.mkdir(parents=True)
+        legacy_data = _build_binary_cookies_file(
+            [_build_page([_build_cookie_record(".x.com", "auth_token", "legacy_auth")])]
+        )
+        (legacy_dir / "Cookies.binarycookies").write_bytes(legacy_data)
+
+        sandbox_path = (
+            tmp_path
+            / "Library"
+            / "Containers"
+            / "com.apple.Safari"
+            / "Data"
+            / "Library"
+            / "Cookies"
+            / "Cookies.binarycookies"
+        )
+        assert not sandbox_path.exists()
+
+        with patch(
+            "scripts.lib.safari_cookies.Path.home", return_value=tmp_path
+        ), patch("scripts.lib.safari_cookies.sys") as mock_sys:
+            mock_sys.platform = "darwin"
+            mock_sys.stderr = sys.stderr
+            result = extract_safari_cookies_macos("x.com", ["auth_token"])
+
+        assert result is not None
+        assert result["auth_token"] == "legacy_auth"
+
     def test_permission_denied(self, tmp_path: Path, capsys):
         cookie_dir = (
             tmp_path
